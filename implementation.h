@@ -20,15 +20,11 @@ extern const unsigned int LARGEBORDERSIZE;
 extern const unsigned int FULLSIZE;
 
 struct boardState{
-    int* board;
-    unsigned int* notes;
-    bool* givenDigits;
-    int cursor;
     bool error;
 };
 
 void settingOn(unsigned int);
-struct boardState* initGame();
+struct boardState* initGame(unsigned int);
 void gameloop(struct boardState*);
 void cleanup(struct boardState*);
 

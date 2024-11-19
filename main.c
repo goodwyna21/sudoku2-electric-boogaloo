@@ -12,9 +12,7 @@ gcc -o main main.c getBoard.c -lncurses -lcurl
 */
 
 int main(int argc, char* argv[]){
-    settingOn(SHOW_NOTES | SHOW_ERRORS | HIGHLIGHT_SIMILAR/* | AUTONOTE*/);
-    struct boardState* state = initGame();
-
+    struct boardState* state = initGame(SHOW_NOTES | SHOW_ERRORS | HIGHLIGHT_SIMILAR);
     if(state->error) return 0;
 
     //mainloop

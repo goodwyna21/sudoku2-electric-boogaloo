@@ -10,8 +10,6 @@
 const unsigned int BOARDSIZE = 9;
 const char* PUZZLEFILE = "board.txt";
 
-int ERROR_LOCATION = -1;
-unsigned int SETTINGS = 0;
 const unsigned int HIGHLIGHT_SIMILAR = 1;
 const unsigned int SHOW_NOTES = 1 << 1;
 const unsigned int SHOW_ERRORS = 1 << 2;
@@ -27,18 +25,20 @@ struct boardState{
     int* board;
     unsigned int* notes;
     bool* givenDigits;
+    unsigned int settings;
     int cursor;
     bool error;
+    int error_location;
 };
 
 //turns on setting, e.g. showing notes
-void settingOn(unsigned int options){ SETTINGS |= options; }
+void settingOn(struct boardState* state, unsigned int options){ state->settings |= options; }
 //turns off setting, e.g. showing notes
-void settingOff(unsigned int options){ SETTINGS &= ~options; }
+void settingOff(struct boardState* state, unsigned int options){ state->settings &= ~options; }
 //returns the state of setting, e.g. showing notes
-bool settingGet(unsigned int option){ return SETTINGS & option; }
+bool settingGet(struct boardState* state, unsigned int option){ return state->settings & option; }
 //toggles the state of a setting
-void settingToggle(unsigned int option){ SETTINGS ^= option; }
+void settingToggle(struct boardState* state, unsigned int option){ state->settings ^= option; }
 
 //loads in board from file, expects just 81 digits in a row, with 0 being empty squares
 //e.g. 006750000093406070005132800807361020009804000362075080028503010004017200751008043
@@ -60,6 +60,7 @@ char loadboard(int* board){
 #define COL_ERROR   3
 #define COL_SELECT  4
 #define COL_SIMILAR 5
+#define COL_GREEN   6
 //start up curses and initializes color pairs
 void initCurses(){
     initscr();
@@ -81,6 +82,7 @@ void initCurses(){
         init_pair(COL_ERROR,   COLOR_BLACK, COLOR_RED);
         init_pair(COL_SELECT,  COLOR_BLACK, COLOR_YELLOW);
         init_pair(COL_SIMILAR, COLOR_BLACK, COLOR_MAGENTA);
+        init_pair(COL_GREEN,   COLOR_BLACK, COLOR_GREEN);
 /*
         init_pair(1, COLOR_RED,     COLOR_BLACK);
         init_pair(2, COLOR_GREEN,   COLOR_BLACK);
@@ -93,70 +95,8 @@ void initCurses(){
     }
 }
 
-//draws the board and refreshes the screen
-void drawBoard(struct boardState* state){
-    attron(COLOR_PAIR(COL_DEFAULT));
-
-    unsigned int large_border_pos[] = {11,23};//{11,12,24,25};
-
-    //main lines
-    for(int i = 0; i < sizeof(large_border_pos)/sizeof(large_border_pos[0]); i++){
-        mvvline(0,large_border_pos[i],ACS_VLINE,FULLSIZE);
-        mvhline(large_border_pos[i],0,ACS_HLINE,FULLSIZE);
-    }
-    for(int i = 0; i < 4; i++){
-        for(int j = 0; j < 4; j++){
-            mvaddch(large_border_pos[i], large_border_pos[j], ACS_PLUS);
-        }
-    }
-
-    int px, py;
-    for(int x = 0; x < BOARDSIZE; x++){
-        for(int i = x, y = 0; y < BOARDSIZE; i=++y*BOARDSIZE+x){
-            px = x*CELLSIZE + (LARGEBORDERSIZE-1)*x/SQUARESIZE;
-            py = y*CELLSIZE + (LARGEBORDERSIZE-1)*y/SQUARESIZE;
-            if(state->board[i]){ //cell is known
-                if(state->givenDigits[i]) attron(A_BOLD);
-                attron((i==state->cursor) ? COLOR_PAIR(COL_SELECT) : COLOR_PAIR(COL_HLIGHT));
-                if(settingGet(HIGHLIGHT_SIMILAR) && !(i==state->cursor) && state->board[state->cursor]){
-                    attron((state->board[i]==state->board[state->cursor]) ? COLOR_PAIR(COL_SIMILAR) : COLOR_PAIR(COL_HLIGHT));
-                }
-                if(settingGet(SHOW_ERRORS) && ERROR_LOCATION==i){
-                    attron(COLOR_PAIR(COL_ERROR));
-                }
-                mvaddstr(py  , px, "   ");
-                mvaddstr(py+1, px, "   ");
-                mvaddstr(py+2, px, "   ");
-                mvaddch(py+1,px+1,48+state->board[i]);
-                if(state->givenDigits[i]) attroff(A_BOLD);
-                attron(COLOR_PAIR(COL_DEFAULT));
-            } else if(settingGet(SHOW_NOTES)){ //cell is unknown
-                if(i==state->cursor){
-                    attron(COLOR_PAIR(COL_SELECT));
-                }
-                mvaddstr(py  , px, "   ");
-                mvaddstr(py+1, px, "   ");
-                mvaddstr(py+2, px, "   ");
-                for(int j = 0; j < BOARDSIZE; j++){
-                    if(state->notes[i] & 1<<j){
-                        mvaddch(py + 2-j/(CELLSIZE-1), px + j%(CELLSIZE-1), 49+j);
-                    }
-                }
-                if(i==state->cursor){
-                    attron(COLOR_PAIR(COL_DEFAULT));
-                }
-            }
-        }
-    }
-
-    mvaddstr(FULLSIZE + 2, FULLSIZE / 2 - 8, "Input Mode: ");
-    addstr(settingGet(INPUT_MODE) ? "Notes " : "Digits");
-
-    refresh();
-}
-
 //draws keymap information to screen
-void drawControls(){
+void drawControls(struct boardState* state){
     unsigned int starty = FULLSIZE + 4;
     mvaddstr(starty++,0, "Quit:           ");
     addch(QUIT);
@@ -174,10 +114,34 @@ void drawControls(){
     addch(AUTOFILL);
     mvaddstr(starty++,0, "AUTONOTE:       ");
     addch(TOGGLE_AUTONOTE);
+    if(settingGet(state, AUTONOTE)){
+        addch(' ');
+        attron(COLOR_PAIR(COL_GREEN));
+        addch('!');
+        attroff(COLOR_PAIR(COL_GREEN));
+    } else {
+        addstr("  ");
+    }
     mvaddstr(starty++,0, "SHOW HIGHLIGHT: ");
     addch(TOGGLE_SHOWHIGHLIGHT);
+    if(settingGet(state, HIGHLIGHT_SIMILAR)){
+        addch(' ');
+        attron(COLOR_PAIR(COL_GREEN));
+        addch('!');
+        attroff(COLOR_PAIR(COL_GREEN));
+    } else {
+        addstr("  ");
+    }
     mvaddstr(starty++,0, "SHOW ERROR:     ");
     addch(TOGGLE_SHOWERROR);
+    if(settingGet(state, SHOW_ERRORS)){
+        addch(' ');
+        attron(COLOR_PAIR(COL_GREEN));
+        addch('!');
+        attroff(COLOR_PAIR(COL_GREEN));
+    } else {
+        addstr("  ");
+    }
     mvaddstr(starty++,0, "SOLVE PUZZLE    ");
     addch(SOLVE_PUZZLE);
     mvaddstr(starty++,0, "TEST VALID      ");
@@ -200,6 +164,70 @@ void drawControls(){
     addch(ALT_EIGHT);
     mvaddstr(starty++,0, "ALT_NINE:       ");
     addch(ALT_NINE);
+}
+
+//draws the board and refreshes the screen
+void drawBoard(struct boardState* state){
+    attron(COLOR_PAIR(COL_DEFAULT));
+
+    drawControls(state);
+
+    unsigned int large_border_pos[] = {11,23};//{11,12,24,25};
+
+    //main lines
+    for(int i = 0; i < sizeof(large_border_pos)/sizeof(large_border_pos[0]); i++){
+        mvvline(0,large_border_pos[i],ACS_VLINE,FULLSIZE);
+        mvhline(large_border_pos[i],0,ACS_HLINE,FULLSIZE);
+    }
+    for(int i = 0; i < 4; i++){
+        for(int j = 0; j < 4; j++){
+            mvaddch(large_border_pos[i], large_border_pos[j], ACS_PLUS);
+        }
+    }
+
+    int px, py;
+    for(int x = 0; x < BOARDSIZE; x++){
+        for(int i = x, y = 0; y < BOARDSIZE; i=++y*BOARDSIZE+x){
+            px = x*CELLSIZE + (LARGEBORDERSIZE-1)*x/SQUARESIZE;
+            py = y*CELLSIZE + (LARGEBORDERSIZE-1)*y/SQUARESIZE;
+            if(state->board[i]){ //cell is known
+                if(state->givenDigits[i]) attron(A_BOLD);
+                attron((i==state->cursor) ? COLOR_PAIR(COL_SELECT) : COLOR_PAIR(COL_HLIGHT));
+                if(settingGet(state, HIGHLIGHT_SIMILAR) && !(i==state->cursor) && state->board[state->cursor]){
+                    attron((state->board[i]==state->board[state->cursor]) ? COLOR_PAIR(COL_SIMILAR) : COLOR_PAIR(COL_HLIGHT));
+                }
+                if(settingGet(state, SHOW_ERRORS) && state->error_location==i){
+                    attron(COLOR_PAIR(COL_ERROR));
+                }
+                mvaddstr(py  , px, "   ");
+                mvaddstr(py+1, px, "   ");
+                mvaddstr(py+2, px, "   ");
+                mvaddch(py+1,px+1,48+state->board[i]);
+                if(state->givenDigits[i]) attroff(A_BOLD);
+                attron(COLOR_PAIR(COL_DEFAULT));
+            } else if(settingGet(state, SHOW_NOTES)){ //cell is unknown
+                if(i==state->cursor){
+                    attron(COLOR_PAIR(COL_SELECT));
+                }
+                mvaddstr(py  , px, "   ");
+                mvaddstr(py+1, px, "   ");
+                mvaddstr(py+2, px, "   ");
+                for(int j = 0; j < BOARDSIZE; j++){
+                    if(state->notes[i] & 1<<j){
+                        mvaddch(py + 2-j/(CELLSIZE-1), px + j%(CELLSIZE-1), 49+j);
+                    }
+                }
+                if(i==state->cursor){
+                    attron(COLOR_PAIR(COL_DEFAULT));
+                }
+            }
+        }
+    }
+
+    mvaddstr(FULLSIZE + 2, FULLSIZE / 2 - 8, "Input Mode: ");
+    addstr(settingGet(state, INPUT_MODE) ? "Notes " : "Digits");
+
+    refresh();
 }
 
 //fills neighbors with the indices of all squares with influence on posx, posy
@@ -250,12 +278,12 @@ void addDigit(struct boardState* state, int digit){
     if(state->givenDigits[state->cursor]){
         return;
     }
-    if(settingGet(INPUT_MODE)){ //notes mode
+    if(settingGet(state, INPUT_MODE)){ //notes mode
         state->notes[state->cursor] ^= 1 << (digit-1);
     } else { //direct insertion mode
         state->board[state->cursor] = digit;
     }
-    if(settingGet(AUTONOTE)){
+    if(settingGet(state, AUTONOTE)){
         fillNotes(state);
     }
 }
@@ -381,16 +409,17 @@ bool handleInput(struct boardState* state, int c){
             addDigit(state, 9);
             break;
         case SWITCHMODE:
-            settingToggle(INPUT_MODE);
+            settingToggle(state, INPUT_MODE);
             break;
         case AUTOFILL:
             //todo
             break;
         case TOGGLE_AUTONOTE:
-            settingToggle(AUTONOTE);
+            settingToggle(state, AUTONOTE);
+            if(settingGet(state, AUTONOTE)) fillNotes(state);
             break;
         case TOGGLE_SHOWHIGHLIGHT:
-            settingToggle(HIGHLIGHT_SIMILAR);
+            settingToggle(state, HIGHLIGHT_SIMILAR);
             break;
         case TOGGLE_SHOWERROR:
             //todo
@@ -399,7 +428,7 @@ bool handleInput(struct boardState* state, int c){
             //todo
             break;
         case TEST_VALID:
-            ERROR_LOCATION = validBoard(state);
+            state->error_location = validBoard(state);
             break;
     }
 
@@ -408,7 +437,7 @@ bool handleInput(struct boardState* state, int c){
 }
 
 //initialize curses, settings, and boardstate
-struct boardState* initGame(){
+struct boardState* initGame(unsigned int settings){
     struct boardState* state = malloc(sizeof(struct boardState));
     state->board = (int*) calloc(BOARDSIZE*BOARDSIZE, sizeof(int));
     state->notes = (unsigned int*) calloc(BOARDSIZE*BOARDSIZE, sizeof(unsigned int));
@@ -422,6 +451,10 @@ struct boardState* initGame(){
 
     state->cursor = 0;
     state->error = false;
+    state->settings = 0;
+    state->error_location = -1;
+
+    settingOn(state, settings);
 
     //fetch board from api
     if(!getBoard(state->board)){
@@ -434,8 +467,8 @@ struct boardState* initGame(){
 
     //fill out the board and draw starting info
     fillGiven(state);
-    if(settingGet(AUTONOTE)) fillNotes(state);
-    drawControls();
+    if(settingGet(state, AUTONOTE)) fillNotes(state);
+    drawControls(state);
     drawBoard(state);
     return state;
 }
