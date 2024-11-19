@@ -19,11 +19,17 @@ extern const unsigned int SQUARESIZE;
 extern const unsigned int LARGEBORDERSIZE;
 extern const unsigned int FULLSIZE;
 
-struct boardState;
+struct boardState{
+    int* board;
+    unsigned int* notes;
+    bool* givenDigits;
+    int cursor;
+    bool error;
+};
 
 void settingOn(unsigned int);
-bool init(int*, unsigned int*, bool*, int*);
-void gameloop(int*, unsigned int*, bool*, int*);
-void cleanup();
+struct boardState* initGame();
+void gameloop(struct boardState*);
+void cleanup(struct boardState*);
 
 #endif

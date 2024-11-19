@@ -3,6 +3,7 @@
 
 #include <curses.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include "keymap.h"
 #include "getBoard.h"
 
@@ -27,6 +28,7 @@ struct boardState{
     unsigned int* notes;
     bool* givenDigits;
     int cursor;
+    bool error;
 };
 
 //turns on setting, e.g. showing notes
@@ -78,7 +80,7 @@ void initCurses(){
         init_pair(COL_HLIGHT,  COLOR_BLACK, COLOR_CYAN);
         init_pair(COL_ERROR,   COLOR_BLACK, COLOR_RED);
         init_pair(COL_SELECT,  COLOR_BLACK, COLOR_YELLOW);
-        init_pair(COL_SIMILAR, COLOR_MAGENTA, COLOR_CYAN);
+        init_pair(COL_SIMILAR, COLOR_BLACK, COLOR_MAGENTA);
 /*
         init_pair(1, COLOR_RED,     COLOR_BLACK);
         init_pair(2, COLOR_GREEN,   COLOR_BLACK);
@@ -92,7 +94,7 @@ void initCurses(){
 }
 
 //draws the board and refreshes the screen
-void drawBoard(int* board, unsigned int* notes, bool* givenDigits, int cursor){
+void drawBoard(struct boardState* state){
     attron(COLOR_PAIR(COL_DEFAULT));
 
     unsigned int large_border_pos[] = {11,23};//{11,12,24,25};
@@ -113,11 +115,11 @@ void drawBoard(int* board, unsigned int* notes, bool* givenDigits, int cursor){
         for(int i = x, y = 0; y < BOARDSIZE; i=++y*BOARDSIZE+x){
             px = x*CELLSIZE + (LARGEBORDERSIZE-1)*x/SQUARESIZE;
             py = y*CELLSIZE + (LARGEBORDERSIZE-1)*y/SQUARESIZE;
-            if(board[i]){ //cell is known
-                if(givenDigits[i]) attron(A_BOLD);
-                attron((i==cursor) ? COLOR_PAIR(COL_SELECT) : COLOR_PAIR(COL_HLIGHT));
-                if(settingGet(HIGHLIGHT_SIMILAR) && !(i==cursor) && board[cursor]){
-                    attron((board[i]==board[cursor]) ? COLOR_PAIR(COL_SIMILAR) : COLOR_PAIR(COL_HLIGHT));
+            if(state->board[i]){ //cell is known
+                if(state->givenDigits[i]) attron(A_BOLD);
+                attron((i==state->cursor) ? COLOR_PAIR(COL_SELECT) : COLOR_PAIR(COL_HLIGHT));
+                if(settingGet(HIGHLIGHT_SIMILAR) && !(i==state->cursor) && state->board[state->cursor]){
+                    attron((state->board[i]==state->board[state->cursor]) ? COLOR_PAIR(COL_SIMILAR) : COLOR_PAIR(COL_HLIGHT));
                 }
                 if(settingGet(SHOW_ERRORS) && ERROR_LOCATION==i){
                     attron(COLOR_PAIR(COL_ERROR));
@@ -125,22 +127,22 @@ void drawBoard(int* board, unsigned int* notes, bool* givenDigits, int cursor){
                 mvaddstr(py  , px, "   ");
                 mvaddstr(py+1, px, "   ");
                 mvaddstr(py+2, px, "   ");
-                mvaddch(py+1,px+1,48+board[i]);
-                if(givenDigits[i]) attroff(A_BOLD);
+                mvaddch(py+1,px+1,48+state->board[i]);
+                if(state->givenDigits[i]) attroff(A_BOLD);
                 attron(COLOR_PAIR(COL_DEFAULT));
             } else if(settingGet(SHOW_NOTES)){ //cell is unknown
-                if(i==cursor){
+                if(i==state->cursor){
                     attron(COLOR_PAIR(COL_SELECT));
                 }
                 mvaddstr(py  , px, "   ");
                 mvaddstr(py+1, px, "   ");
                 mvaddstr(py+2, px, "   ");
                 for(int j = 0; j < BOARDSIZE; j++){
-                    if(notes[i] & 1<<j){
+                    if(state->notes[i] & 1<<j){
                         mvaddch(py + 2-j/(CELLSIZE-1), px + j%(CELLSIZE-1), 49+j);
                     }
                 }
-                if(i==cursor){
+                if(i==state->cursor){
                     attron(COLOR_PAIR(COL_DEFAULT));
                 }
             }
@@ -215,17 +217,17 @@ void getNeighbors(unsigned int neighbors[], int posx, int posy){
 }
 
 //fills in the state of notes based on whats on the board
-void fillNotes(int* board, unsigned int* notes){
+void fillNotes(struct boardState* state){
     unsigned int neighbors[BOARDSIZE*3];
     for(int x = 0; x < BOARDSIZE; x++){
         for(int i = x, y = 0; y < BOARDSIZE; i=++y*BOARDSIZE+x){
-            notes[i] = ~0;
+            state->notes[i] = ~0;
             getNeighbors(neighbors, x, y);
             for(int k = 0; k < BOARDSIZE; k++){
-                if(!(notes[i] & 1<<k)) continue;
+                if(!(state->notes[i] & 1<<k)) continue;
                 for(int j = 0; j < BOARDSIZE*3; j++){
-                    if(board[neighbors[j]] == k+1){
-                        notes[i] &= ~(1 << k);
+                    if(state->board[neighbors[j]] == k+1){
+                        state->notes[i] &= ~(1 << k);
                         break;
                     }
                 }
@@ -235,26 +237,26 @@ void fillNotes(int* board, unsigned int* notes){
 }
 
 //fills in which numbers are given by the problem
-void fillGiven(int* board, bool* givenDigits){
+void fillGiven(struct boardState* state){
     for(int i = 0; i < BOARDSIZE*BOARDSIZE; i++){
-        if(board[i]){
-            givenDigits[i] = true;
+        if(state->board[i]){
+            state->givenDigits[i] = true;
         }
     }
 }
 
 //handles adding a digit to the board in either notes mode or direct insertion
-void addDigit(int* board, unsigned int* notes, bool* givenDigits, int digit, int cursor){
-    if(givenDigits[cursor]){
+void addDigit(struct boardState* state, int digit){
+    if(state->givenDigits[state->cursor]){
         return;
     }
     if(settingGet(INPUT_MODE)){ //notes mode
-        notes[cursor] ^= 1 << (digit-1);
+        state->notes[state->cursor] ^= 1 << (digit-1);
     } else { //direct insertion mode
-        board[cursor] = digit;
+        state->board[state->cursor] = digit;
     }
     if(settingGet(AUTONOTE)){
-        fillNotes(board, notes);
+        fillNotes(state);
     }
 }
 
@@ -278,34 +280,34 @@ void sleep_ms(int milliseconds)
 }
 
 //check if the board is valid
-//returns -1 if valid, index of error otherwise
-int validBoard(int* board, unsigned int* notes){
+//returns -1 if valid, index of error otherwise (NOT WORKING)
+int validBoard(struct boardState* state){
     unsigned int neighbors[BOARDSIZE*3];
-    fillNotes(board, notes);
+    fillNotes(state);
     for(int i = 0; i < BOARDSIZE*BOARDSIZE; i++){
-        if(board[i]){
+        if(state->board[i]){
             getNeighbors(neighbors, i/BOARDSIZE, i%BOARDSIZE);
             for(int j = 0; j < BOARDSIZE*3; j++){
                 if(i == j) continue;
-                if(board[i] == board[j]) return i;
+                if(state->board[i] == state->board[j]) return i;
             }
         } else {
-            if(!notes[i]) return i;
+            if(!state->notes[i]) return i;
         }
     }
     mvaddch(0, FULLSIZE+10, '#');
     return -1;
 }
 
-//solve board with a backtracking algorithm
-bool backtracking(int* board, unsigned int* notes, bool* givenDigits){
+//solve board with a backtracking algorithm (NOT WORKING)
+bool backtracking(struct boardState* state){
     //mvaddch(0, FULLSIZE+10, '$');
     for(int i = 0; i < BOARDSIZE*BOARDSIZE; i++){
-        if(!board[i]){
+        if(!state->board[i]){
             for(int n = 0; n < BOARDSIZE; n++){
-                board[i] = n;
-                drawBoard(board, notes, givenDigits, -1);
-                if(backtracking(board, notes, givenDigits)){
+                state->board[i] = n;
+                drawBoard(state);
+                if(backtracking(state)){
                     return true;
                 }
             }
@@ -313,70 +315,70 @@ bool backtracking(int* board, unsigned int* notes, bool* givenDigits){
         }
     }
     //mvaddch(0, FULLSIZE+11, '$');
-    drawBoard(board, notes, givenDigits, -1);
+    drawBoard(state);
     return true;
 }
 
 //handle keypresses to move cursor, place digit, etc.
-bool handleInput(int* board, unsigned int* notes, bool* givenDigits, int c, int* cursor/* int* cursx, int* cursy*/){
+bool handleInput(struct boardState* state, int c){
     switch(c){
         case QUIT:
             return false;
         case UP:
-            (*cursor)-=BOARDSIZE;
-            if((*cursor)<0){
-                (*cursor)+=BOARDSIZE*BOARDSIZE;
+            state->cursor-=BOARDSIZE;
+            if(state->cursor<0){
+                state->cursor+=BOARDSIZE*BOARDSIZE;
             }
             break;
         case DOWN:
-            (*cursor)+=BOARDSIZE;
-            if((*cursor)>=BOARDSIZE*BOARDSIZE){
-                (*cursor)-=BOARDSIZE*BOARDSIZE;
+            state->cursor+=BOARDSIZE;
+            if(state->cursor>=BOARDSIZE*BOARDSIZE){
+                state->cursor-=BOARDSIZE*BOARDSIZE;
             }
             break;
         case LEFT:
-            if((*cursor)%BOARDSIZE==0){
-                (*cursor)+=BOARDSIZE-1;
+            if(state->cursor%BOARDSIZE==0){
+                state->cursor+=BOARDSIZE-1;
             } else {
-                (*cursor)--;
+                state->cursor--;
             }
             break;
         case RIGHT:
-            (*cursor)++;
-            if((*cursor)%BOARDSIZE==0){
-                (*cursor)-=BOARDSIZE;
+            state->cursor++;
+            if(state->cursor%BOARDSIZE==0){
+                state->cursor-=BOARDSIZE;
             }
             break;
         case 48 ... 57:
             //number input
-            addDigit(board, notes, givenDigits, c-48, *cursor);
+            addDigit(state, c-48);
             break;
         case ALT_ONE:
-            addDigit(board, notes, givenDigits, 1, *cursor);
+            addDigit(state, 1);
             break;
         case ALT_TWO:
-            addDigit(board, notes, givenDigits, 2, *cursor);
+            addDigit(state, 2);
             break;
         case ALT_THREE:
-            addDigit(board, notes, givenDigits, 3, *cursor);
+            addDigit(state, 3);
             break;
         case ALT_FOUR:
-            addDigit(board, notes, givenDigits, 4, *cursor);
+            addDigit(state, 4);
             break;
         case ALT_FIVE:
-            addDigit(board, notes, givenDigits, 5, *cursor);
+            addDigit(state, 5);
             break;
         case ALT_SIX:
-            addDigit(board, notes, givenDigits, 6, *cursor);
+            addDigit(state, 6);
             break;
         case ALT_SEVEN:
-            addDigit(board, notes, givenDigits, 7, *cursor);
+            addDigit(state, 7);
             break;
         case ALT_EIGHT:
-            addDigit(board, notes, givenDigits, 8, *cursor);
+            addDigit(state, 8);
             break;
         case ALT_NINE:
-            addDigit(board, notes, givenDigits, 9, *cursor);
+            addDigit(state, 9);
             break;
         case SWITCHMODE:
             settingToggle(INPUT_MODE);
@@ -394,50 +396,61 @@ bool handleInput(int* board, unsigned int* notes, bool* givenDigits, int c, int*
             //todo
             break;
         case SOLVE_PUZZLE:
-            backtracking(board, notes, givenDigits);
+            //todo
             break;
         case TEST_VALID:
-            ERROR_LOCATION = validBoard(board, notes);
+            ERROR_LOCATION = validBoard(state);
             break;
     }
 
-    drawBoard(board, notes, givenDigits, *cursor);
+    drawBoard(state);
     return true;
 }
 
 //initialize curses, settings, and boardstate
-bool init(int* board, unsigned int* notes, bool* givenDigits, int* cursor){
-    *cursor = 0;
+struct boardState* initGame(){
+    struct boardState* state = malloc(sizeof(struct boardState));
+    state->board = (int*) calloc(BOARDSIZE*BOARDSIZE, sizeof(int));
+    state->notes = (unsigned int*) calloc(BOARDSIZE*BOARDSIZE, sizeof(unsigned int));
+    state->givenDigits = (bool*) calloc(BOARDSIZE*BOARDSIZE, sizeof(bool));
 
-    for(int i = 0; i < BOARDSIZE*BOARDSIZE; i++){
-        board[i] = 0;
-        notes[i] = 0;
-        givenDigits[i] = 0;
-    }  
+    if(state->board == NULL || state->notes == NULL || state->givenDigits == NULL){
+        printf("Unable to allocate memory\n");
+        state->error = true;
+        return state;
+    }
+
+    state->cursor = 0;
+    state->error = false;
 
     //fetch board from api
-    if(!getBoard(board)){
+    if(!getBoard(state->board)){
         printf("Unable to fetch board\n");
-        return false;
+        state->error = true;
+        return state;
     }
   
     initCurses();
 
     //fill out the board and draw starting info
-    fillGiven(board, givenDigits);
-    if(settingGet(AUTONOTE)) fillNotes(board, notes);
+    fillGiven(state);
+    if(settingGet(AUTONOTE)) fillNotes(state);
     drawControls();
-    drawBoard(board, notes, givenDigits, *cursor);
-    return true;
+    drawBoard(state);
+    return state;
 }
 
 //run gameloop
-void gameloop(int* board, unsigned int* notes, bool* givenDigits, int* cursor){
-    while(handleInput(board, notes, givenDigits, getch(), &cursor));
+void gameloop(struct boardState* state){
+    while(handleInput(state, getch()));
 }
 
 //might add timer and stuff later
-void cleanup(){
+void cleanup(struct boardState* state){
     endwin();
+    free(state->board);
+    free(state->notes);
+    free(state->givenDigits);
+    free(state);
 }
 #endif

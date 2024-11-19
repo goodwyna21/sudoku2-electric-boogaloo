@@ -12,17 +12,14 @@ gcc -o main main.c getBoard.c -lncurses -lcurl
 */
 
 int main(int argc, char* argv[]){
-    int board[BOARDSIZE*BOARDSIZE]; //stores digits on the board
-    unsigned int notes[BOARDSIZE*BOARDSIZE]; //stores notes as a bitmask
-    bool givenDigits[BOARDSIZE*BOARDSIZE]; //remembers which digits are given by the puzzle
-    int cursor; //index of cursor
-    
-    settingOn(SHOW_NOTES | SHOW_ERRORS | HIGHLIGHT_SIMILAR | AUTONOTE);
-    if(!init(board, notes, givenDigits, &cursor)) return 0;
+    settingOn(SHOW_NOTES | SHOW_ERRORS | HIGHLIGHT_SIMILAR/* | AUTONOTE*/);
+    struct boardState* state = initGame();
+
+    if(state->error) return 0;
 
     //mainloop
-    
+    gameloop(state);    
 
-    cleanup();
+    cleanup(state);
     return 0;
 }
