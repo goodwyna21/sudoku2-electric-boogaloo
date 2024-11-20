@@ -1,5 +1,6 @@
 #include "implementation.h"
 
+#include <stdio.h>
 /*
 where im at:
 
@@ -12,11 +13,15 @@ gcc -o main main.c getBoard.c -lncurses -lcurl
 */
 
 int main(int argc, char* argv[]){
-    struct boardState* state = initGame(SHOW_NOTES | SHOW_ERRORS | HIGHLIGHT_SIMILAR);
-    if(state->error) return 0;
+    unsigned int difficulty;
+    printf("Enter difficulty:\n1 - Easy\n2 - Medium\n3 - Hard\n>");
 
-    //mainloop
-    gameloop(state);    
+    scanf("%d", &difficulty);
+    difficulty--;
+
+    struct boardState* state = initGame(difficulty, SHOW_NOTES | SHOW_ERRORS | HIGHLIGHT_SIMILAR);
+
+    if(!state->error) gameloop(state);    
 
     cleanup(state);
     return 0;

@@ -15,6 +15,7 @@ const unsigned int SHOW_NOTES = 1 << 1;
 const unsigned int SHOW_ERRORS = 1 << 2;
 const unsigned int AUTONOTE = 1 << 3;
 const unsigned int INPUT_MODE = 1 << 4;
+const unsigned int CURSES_STARTED = 1 << 5;
 
 const unsigned int CELLSIZE = 4;
 const unsigned int SQUARESIZE = 3;
@@ -437,8 +438,15 @@ bool handleInput(struct boardState* state, int c){
 }
 
 //initialize curses, settings, and boardstate
-struct boardState* initGame(unsigned int settings){
+struct boardState* initGame(unsigned int difficulty, unsigned int settings){
     struct boardState* state = malloc(sizeof(struct boardState));
+
+    if(difficulty > 2){
+        printf("Invalid difficulty level: %d\n", difficulty);
+        state->error = true;
+        return state;
+    }
+
     state->board = (int*) calloc(BOARDSIZE*BOARDSIZE, sizeof(int));
     state->notes = (unsigned int*) calloc(BOARDSIZE*BOARDSIZE, sizeof(unsigned int));
     state->givenDigits = (bool*) calloc(BOARDSIZE*BOARDSIZE, sizeof(bool));
@@ -446,6 +454,7 @@ struct boardState* initGame(unsigned int settings){
     if(state->board == NULL || state->notes == NULL || state->givenDigits == NULL){
         printf("Unable to allocate memory\n");
         state->error = true;
+
         return state;
     }
 
@@ -457,13 +466,14 @@ struct boardState* initGame(unsigned int settings){
     settingOn(state, settings);
 
     //fetch board from api
-    if(!getBoard(state->board)){
+    if(!getBoard(state->board, difficulty)){
         printf("Unable to fetch board\n");
         state->error = true;
         return state;
     }
   
     initCurses();
+    settingOn(state, CURSES_STARTED);
 
     //fill out the board and draw starting info
     fillGiven(state);
@@ -480,7 +490,7 @@ void gameloop(struct boardState* state){
 
 //might add timer and stuff later
 void cleanup(struct boardState* state){
-    endwin();
+    if(settingGet(state, CURSES_STARTED)) endwin();
     free(state->board);
     free(state->notes);
     free(state->givenDigits);

@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "curses.h": "c",
-        "keymap.h": "c"
+        "keymap.h": "c",
+        "stdio.h": "c",
+        "implementation.h": "c"
     }
 }

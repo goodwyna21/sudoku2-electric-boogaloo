@@ -23,8 +23,7 @@ struct boardState{
     bool error;
 };
 
-void settingOn(unsigned int);
-struct boardState* initGame(unsigned int);
+struct boardState* initGame(unsigned int, unsigned int);
 void gameloop(struct boardState*);
 void cleanup(struct boardState*);
 
